@@ -1,9 +1,20 @@
+use std::str::FromStr as _;
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let configs =
-        [ekkyo::config::Config::default()];
+    let config = std::env::args().skip(1).fold("".to_owned(), |mut acc, s| {
+        acc += &(s.to_owned() + " ");
+        acc
+    });
+
+    let mut configs = vec![ekkyo::config::Config::from_str(config.trim_end()).unwrap()];
+
+    if config.is_empty() {
+        configs = vec![ekkyo::config::Config::default()];
+    }
+
     let mut peers: Vec<ekkyo::peer::Peer> =
         configs.into_iter().map(ekkyo::peer::Peer::new).collect();
 

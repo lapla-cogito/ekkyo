@@ -3,6 +3,7 @@ pub struct Peer {
     state: crate::state::State,
     queue: crate::queue::Queue,
     config: crate::config::Config,
+    connection: Option<crate::connection::Connection>,
 }
 
 impl Peer {
@@ -11,6 +12,7 @@ impl Peer {
             state: crate::state::State::Idle,
             queue: crate::queue::Queue::new(),
             config,
+            connection: None,
         }
     }
 
@@ -26,11 +28,19 @@ impl Peer {
             tracing::info!("processing event: {:?}", event);
 
             match self.state {
-                crate::state::State::Idle => match event {
-                    crate::event::Event::Start => {
+                crate::state::State::Idle => {
+                    if event == crate::event::Event::Start {
+                        self.connection = crate::connection::Connection::connect(&self.config)
+                            .await
+                            .ok();
+                        if self.connection.is_some() {
+                            self.queue.enqueue(crate::event::Event::TcpConnect);
+                        } else {
+                            panic!("failed to connect: {:?}", self.config);
+                        }
                         self.state = crate::state::State::Connect;
                     }
-                },
+                }
                 _ => {
                     tracing::error!("unhandled state: {:?}", self.state);
                 }
@@ -42,6 +52,7 @@ impl Peer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr as _;
 
     #[tokio::test]
     async fn connect_transition() {
@@ -49,6 +60,17 @@ mod tests {
             "64512 127.0.0.1 64513 127.0.0.2 active".parse().unwrap();
         let mut peer = Peer::new(config);
         peer.start();
+
+        tokio::spawn(async move {
+            let remote_config =
+                crate::config::Config::from_str("64513 127.0.0.2 65412 127.0.0.1 passive").unwrap();
+
+            let mut remote_peer = Peer::new(remote_config);
+            remote_peer.start();
+            remote_peer.next().await;
+        });
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         peer.next().await;
         assert_eq!(peer.state, crate::state::State::Connect);
     }
