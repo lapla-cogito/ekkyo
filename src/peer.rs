@@ -41,6 +41,11 @@ impl Peer {
                         self.state = crate::state::State::Connect;
                     }
                 }
+                crate::state::State::Connect => {
+                    if event == crate::event::Event::TcpConnect {
+                        self.state = crate::state::State::OpenSent;
+                    }
+                }
                 _ => {
                     tracing::error!("unhandled state: {:?}", self.state);
                 }
@@ -73,5 +78,31 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         peer.next().await;
         assert_eq!(peer.state, crate::state::State::Connect);
+    }
+
+    #[tokio::test]
+    async fn open_sent_transition() {
+        let config = crate::config::Config::default();
+        let mut peer = Peer::new(config);
+        peer.start();
+
+        tokio::spawn(async move {
+            let remote_config =
+                crate::config::Config::from_str("64513 127.0.0.2 65412 127.0.0.1 passive").unwrap();
+
+            let mut remote_peer = Peer::new(remote_config);
+            remote_peer.start();
+            for _ in 0..2 {
+                remote_peer.next().await;
+            }
+        });
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        for _ in 0..2 {
+            peer.next().await;
+        }
+
+        assert_eq!(peer.state, crate::state::State::OpenSent);
     }
 }
