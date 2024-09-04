@@ -1,8 +1,10 @@
 use anyhow::Context as _;
+use tokio::io::AsyncWriteExt as _;
 
 #[derive(Debug)]
 pub struct Connection {
     connection: tokio::net::TcpStream,
+    buf: bytes::BytesMut,
 }
 
 impl Connection {
@@ -14,7 +16,9 @@ impl Connection {
             crate::config::Mode::Passive => Self::accept_remote(config).await,
         }?;
 
-        Ok(Self { connection })
+        let buf = bytes::BytesMut::with_capacity(150);
+
+        Ok(Self { connection, buf })
     }
 
     async fn connect_remote(
@@ -44,5 +48,10 @@ impl Connection {
             .await
             .context("failed to accept connection")?;
         Ok(connection)
+    }
+
+    pub async fn send(&mut self, msg: crate::packet::message::Message) {
+        let bytes: bytes::BytesMut = msg.into();
+        self.connection.write_all(&bytes[..]).await.unwrap();
     }
 }

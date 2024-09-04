@@ -43,6 +43,14 @@ impl Peer {
                 }
                 crate::state::State::Connect => {
                     if event == crate::event::Event::TcpConnect {
+                        self.connection
+                            .as_mut()
+                            .expect("connection is none")
+                            .send(crate::packet::message::Message::new_open(
+                                self.config.local_as,
+                                self.config.local_ip,
+                            ))
+                            .await;
                         self.state = crate::state::State::OpenSent;
                     }
                 }

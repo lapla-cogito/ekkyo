@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Copy)]
 pub struct ASNum(u16);
 
 impl From<ASNum> for u16 {
