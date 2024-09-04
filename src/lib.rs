@@ -1,7 +1,9 @@
 pub mod config;
 mod connection;
+pub mod constants;
 mod error;
 mod event;
+mod packet;
 pub mod peer;
 mod queue;
 mod state;
