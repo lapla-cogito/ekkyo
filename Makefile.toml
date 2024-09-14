@@ -1,0 +1,20 @@
+[tasks.test]
+script = ['''
+#!/bin/bash
+
+docker compose -f ./tests/docker-compose.yml build --no-cache
+docker compose -f ./tests/docker-compose.yml up -d
+docker compose -f ./tests/docker-compose.yml exec -T host1 ping -c 5 10.100.220.3
+
+TEST_RESULT=$?
+if [ $TEST_RESULT -eq 0 ]; then
+    echo test succeeded
+else
+    echo test failed
+fi
+
+exit $TEST_RESULT
+''']
+
+[config]
+skip_core_tasks = true

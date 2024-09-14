@@ -69,9 +69,7 @@ mod tests {
 
     #[tokio::test]
     async fn connect_transition() {
-        let config: crate::config::Config =
-            "64512 127.0.0.1 64513 127.0.0.2 active".parse().unwrap();
-        let mut peer = Peer::new(config);
+        let mut peer = Peer::new(crate::config::Config::default());
         peer.start();
 
         tokio::spawn(async move {
