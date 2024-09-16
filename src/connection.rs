@@ -54,4 +54,48 @@ impl Connection {
         let bytes: bytes::BytesMut = msg.into();
         self.connection.write_all(&bytes[..]).await.unwrap();
     }
+
+    pub async fn get_message(&mut self) -> Option<crate::packet::message::Message> {
+        self.read_data_from_tcp_connection().await;
+        let buffer = self.split_buffer_at_message_separator()?;
+        crate::packet::message::Message::try_from(buffer).ok()
+    }
+
+    pub async fn read_data_from_tcp_connection(&mut self) {
+        loop {
+            let mut buf = vec![];
+            match self.connection.try_read_buf(&mut buf) {
+                Ok(0) => {
+                    tracing::info!("connection closed");
+                    break;
+                }
+                Ok(n) => {
+                    self.buf.extend_from_slice(&buf[..n]);
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => {
+                    tracing::error!("failed to read from socket; err = {:?}", e);
+                    break;
+                }
+            }
+        }
+    }
+
+    fn split_buffer_at_message_separator(&mut self) -> Option<bytes::BytesMut> {
+        let idx = self.get_idx_message_separator().ok()?;
+        if self.buf.len() < idx {
+            return None;
+        }
+
+        Some(self.buf.split_to(idx))
+    }
+
+    fn get_idx_message_separator(&self) -> anyhow::Result<usize> {
+        let min_message_len = 19;
+        if self.buf.len() < min_message_len {
+            return Err(anyhow::anyhow!("buffer too short"));
+        }
+
+        Ok(u16::from_be_bytes([self.buf[16], self.buf[17]]) as usize)
+    }
 }

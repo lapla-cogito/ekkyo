@@ -2,4 +2,5 @@
 pub enum Event {
     Start,
     TcpConnect,
+    BgpOpen(crate::packet::open::OpenMessage),
 }

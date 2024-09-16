@@ -1,3 +1,5 @@
+use crate::packet::message;
+
 #[derive(Debug)]
 pub struct Peer {
     state: crate::state::State,
@@ -33,6 +35,7 @@ impl Peer {
                         self.connection = crate::connection::Connection::connect(&self.config)
                             .await
                             .ok();
+
                         if self.connection.is_some() {
                             self.queue.enqueue(crate::event::Event::TcpConnect);
                         } else {
@@ -54,8 +57,24 @@ impl Peer {
                         self.state = crate::state::State::OpenSent;
                     }
                 }
+                crate::state::State::OpenSent => {
+                    if let crate::event::Event::BgpOpen(_) = event {
+                        self.state = crate::state::State::OpenConfirm;
+                    }
+                }
                 _ => {
                     tracing::error!("unhandled state: {:?}", self.state);
+                }
+            }
+
+            if let Some(connection) = &mut self.connection {
+                if let Some(msg) = connection.get_message().await {
+                    tracing::info!("received message: {:?}", msg);
+                    match msg {
+                        message::Message::Open(open) => {
+                            self.queue.enqueue(crate::event::Event::BgpOpen(open));
+                        }
+                    }
                 }
             }
         }
@@ -74,7 +93,7 @@ mod tests {
 
         tokio::spawn(async move {
             let remote_config =
-                crate::config::Config::from_str("64513 127.0.0.2 65412 127.0.0.1 passive").unwrap();
+                crate::config::Config::from_str("64513 127.0.0.2 64512 127.0.0.1 passive").unwrap();
 
             let mut remote_peer = Peer::new(remote_config);
             remote_peer.start();
@@ -88,13 +107,12 @@ mod tests {
 
     #[tokio::test]
     async fn open_sent_transition() {
-        let config = crate::config::Config::default();
-        let mut peer = Peer::new(config);
+        let mut peer = Peer::new(crate::config::Config::default());
         peer.start();
 
         tokio::spawn(async move {
             let remote_config =
-                crate::config::Config::from_str("64513 127.0.0.2 65412 127.0.0.1 passive").unwrap();
+                crate::config::Config::from_str("64513 127.0.0.2 64512 127.0.0.1 passive").unwrap();
 
             let mut remote_peer = Peer::new(remote_config);
             remote_peer.start();
@@ -110,5 +128,37 @@ mod tests {
         }
 
         assert_eq!(peer.state, crate::state::State::OpenSent);
+    }
+
+    #[tokio::test]
+    async fn open_confirm_transition() {
+        let mut peer = Peer::new(crate::config::Config::default());
+        peer.start();
+
+        tokio::spawn(async move {
+            let remote_config =
+                crate::config::Config::from_str("64513 127.0.0.2 64512 127.0.0.1 passive").unwrap();
+            let mut remote_peer = Peer::new(remote_config);
+            remote_peer.start();
+
+            for _ in 0..99 {
+                remote_peer.next().await;
+                if remote_peer.state == crate::state::State::OpenConfirm {
+                    break;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_secs_f32(0.1)).await;
+            }
+        });
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        for _ in 0..99 {
+            peer.next().await;
+            if peer.state == crate::state::State::OpenConfirm {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_secs_f32(0.1)).await;
+        }
+
+        assert_eq!(peer.state, crate::state::State::OpenConfirm);
     }
 }
